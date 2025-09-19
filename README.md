@@ -1,9 +1,16 @@
 # sauter-university-2025-challenge
 
+## Participantes do grupo
+
+- Dani
+- Genário
+- Marcos
+- Stênio
+- Raul
 
 ![Architecture](./img/university.drawio.png)
 
-Sobre o desafio: 
+Sobre o desafio:
 
 > Realizar a implementação vista na arquitetura acima;
 
@@ -22,7 +29,7 @@ REST API que buscará os dados para uma data específica ou um conjunto de dados
 
 > https://dados.ons.org.br/dataset/ear-diario-por-reservatorio
 
-OU apresentar a criação de um agente com o ADK + Gemini, com mecanismo de RAG, que consulta a base de dados HISTÓRICA de ENA e é capaz de responder dúvidas sobre o volume de uma bacia hidrográfica em um determinado período, o agente também deve responder dúvidas sobre a sauter, baseado nos dados do site oficial da sauter http://sauter.digital. 
+OU apresentar a criação de um agente com o ADK + Gemini, com mecanismo de RAG, que consulta a base de dados HISTÓRICA de ENA e é capaz de responder dúvidas sobre o volume de uma bacia hidrográfica em um determinado período, o agente também deve responder dúvidas sobre a sauter, baseado nos dados do site oficial da sauter http://sauter.digital.
 - Exibir em uma representação gráfica uma análise sobre os dados tratados.
 
 ### Critérios avaliados:
@@ -47,6 +54,6 @@ Agente Orquestrador (root);
 Agente que responde as perguntas sobre a ENA;
 Agente que tira dúvidas sobre a sauter, consultando o site da Sauter (sauter.digital);
 
-- modelo spotify 
+- modelo spotify
 
-- Geral de dados 
+- Geral de dados
