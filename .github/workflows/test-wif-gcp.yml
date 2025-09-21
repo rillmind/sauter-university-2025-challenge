@@ -1,0 +1,32 @@
+# .github/workflows/test-wif-gcp.yml
+name: Test GCP Workload Identity
+on:
+  workflow_dispatch # Permite rodar o workflow manualmente na interface do GitHub
+
+permissions:
+  id-token: write # Permissão necessária para o Workload Identity
+  contents: read
+
+jobs:
+  test_gcp_access:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: 'projects/608522675724/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account_email: 'github-actions-sa@project-sauter-hydro-forecast.iam.gserviceaccount.com'
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: 'project-sauter-hydro-forecast'
+
+      - name: Create a test file in GCS
+        run: |
+          echo "Test run on $(date)" > test-file.txt
+          gsutil cp test-file.txt gs://ena-data-bronze-sauter-hydro-forecast/github-actions-test/test-file.txt
+
+      - name: List files to verify
+        run: |
+          gsutil ls gs://ena-data-bronze-sauter-hydro-forecast/github-actions-test/
