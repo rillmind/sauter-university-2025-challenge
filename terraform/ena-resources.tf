@@ -13,30 +13,30 @@ resource "google_bigquery_table" "ena_consolidado" {
   clustering = ["cod_resplanejamento", "nom_subsistema"]
 
   schema = jsonencode([
-    {"name": "ear_data", "type": "DATE", "mode": "REQUIRED"},
-    {"name": "cod_resplanejamento", "type": "INT64", "mode": "REQUIRED"},
-    {"name": "nom_reservatorio", "type": "STRING", "mode": "REQUIRED"},
-    {"name": "ear_total_mwmes", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "ear_maxima_total_mwmes", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "ear_reservatorio_percentual", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearbacia", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearsin", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "nom_bacia", "type": "STRING", "mode": "REQUIRED"},
-    {"name": "nom_subsistema", "type": "STRING", "mode": "REQUIRED"},
-    {"name": "nom_ree", "type": "STRING", "mode": "NULLABLE"},
-    {"name": "tip_reservatorio", "type": "STRING", "mode": "REQUIRED"},
-    {"name": "ear_reservatorio_subsistema_proprio_mwmes", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "ear_reservatorio_subsistema_jusante_mwmes", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "earmax_reservatorio_subsistema_proprio_mwmes", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "earmax_reservatorio_subsistema_jusante_mwmes", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearmaxbacia", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearsubsistema", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearmaxsubsistema", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearsubsistemajusante", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearmaxsubsistemajusante", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "val_contribearmaxsin", "type": "FLOAT", "mode": "REQUIRED"},
-    {"name": "file_source", "type": "STRING", "mode": "NULLABLE"},
-    {"name": "ingestion_timestamp", "type": "TIMESTAMP", "mode": "NULLABLE"}
+    { "name" : "ear_data", "type" : "DATE", "mode" : "REQUIRED" },
+    { "name" : "cod_resplanejamento", "type" : "INT64", "mode" : "REQUIRED" },
+    { "name" : "nom_reservatorio", "type" : "STRING", "mode" : "REQUIRED" },
+    { "name" : "ear_total_mwmes", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "ear_maxima_total_mwmes", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "ear_reservatorio_percentual", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearbacia", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearsin", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "nom_bacia", "type" : "STRING", "mode" : "REQUIRED" },
+    { "name" : "nom_subsistema", "type" : "STRING", "mode" : "REQUIRED" },
+    { "name" : "nom_ree", "type" : "STRING", "mode" : "NULLABLE" },
+    { "name" : "tip_reservatorio", "type" : "STRING", "mode" : "REQUIRED" },
+    { "name" : "ear_reservatorio_subsistema_proprio_mwmes", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "ear_reservatorio_subsistema_jusante_mwmes", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "earmax_reservatorio_subsistema_proprio_mwmes", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "earmax_reservatorio_subsistema_jusante_mwmes", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearmaxbacia", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearsubsistema", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearmaxsubsistema", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearsubsistemajusante", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearmaxsubsistemajusante", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "val_contribearmaxsin", "type" : "FLOAT", "mode" : "REQUIRED" },
+    { "name" : "file_source", "type" : "STRING", "mode" : "NULLABLE" },
+    { "name" : "ingestion_timestamp", "type" : "TIMESTAMP", "mode" : "NULLABLE" }
   ])
 
   depends_on = [google_project_service.apis]
@@ -46,7 +46,7 @@ resource "google_bigquery_table" "ena_consolidado" {
 resource "google_service_account" "sa_ena_pipeline" {
   account_id   = "sa-ena-pipeline"
   display_name = "Service Account para Pipeline ENA"
-  
+
   depends_on = [google_project_service.apis]
 }
 
@@ -80,7 +80,7 @@ resource "google_cloud_scheduler_job" "ena_daily_job" {
   http_target {
     http_method = "POST"
     uri         = "https://us-central1-project-sauter-hydro-forecast.cloudfunctions.net/ena-data-processor"
-    
+
     oidc_token {
       service_account_email = google_service_account.sa_ena_pipeline.email
     }
