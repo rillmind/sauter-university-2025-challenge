@@ -57,30 +57,58 @@ A fase pré-código inclui:
 
 ---
 
-## 3. Convenções e Políticas
+## 3. Convenções e Políticas (Atualizado)
 
 ### 3.1 Naming
-- **Datasets:** `EAR_Diario_por_Reservatorio_{year}.parquet`  
-- **Tabelas (BigQuery):** Snake_case, exemplos: `ena_reservatorios`, `ena_consolidado`  
-- **Buckets GCS:**  
-  - Bronze: `gs://project-id-raw/bronze/ena/` → arquivos originais  
-  - Silver: `gs://project-id-raw/silver/ena_consolidado/` → dados limpos e normalizados  
-  - Gold: `gs://project-id-raw/gold/ena_analytics/` → agregados para análise/modelagem  
+- **Bucket GCS único:**  
+  - `gs://ena-data-project-sauter-hydro-forecast/bronze/` → arquivos originais (2000–2025 em parquet)  
+  - `gs://ena-data-project-sauter-hydro-forecast/silver/` → dados limpos e normalizados  
+  - `gs://ena-data-project-sauter-hydro-forecast/gold/` → dados agregados para análise/modelagem  
+
+- **Dataset BigQuery:**  
+  - `ena_analytics`  
+
+- **Tabelas BigQuery:**  
+  - `ena_consolidado` (particionada por `ear_data` e clusterizada em `cod_resplanejamento`, `nom_subsistema`)  
+
+- **Service Accounts:**  
+  - `github-actions-sa@project-sauter-hydro-forecast.iam.gserviceaccount.com` (CI/CD)  
+  - `sa-ena-pipeline@project-sauter-hydro-forecast.iam.gserviceaccount.com` (ingestão ENA)  
+
+---
 
 ### 3.2 Storage
-- **Formato:** Parquet (Snappy compressed)  
-- **Particionamento:** `DATE(ear_data)`  
-- **Clustering:** `cod_resplanejamento, nom_subsistema` 
-- **TTL (Time To Live):**  
+- **Formato:** Parquet (Snappy)  
+- **Particionamento (BigQuery):** `DATE(ear_data)`  
+- **Clustering (BigQuery):** `cod_resplanejamento, nom_subsistema`  
+- **Políticas de ciclo de vida (a definir):**  
   - Bronze: 90 dias  
-  - Silver: 365 dias (dados limpos)  
-  - Gold: indefinido (dados analíticos)  
+  - Silver: 365 dias  
+  - Gold: indefinido  
+
+---
 
 ### 3.3 Qualidade de Dados
-- **Validações obrigatórias:** Conforme regras do dicionário de dados (nulos, zeros, negativos)
-- **Completude:** Registrar taxa de preenchimento por coluna
-- **Consistência:** Validar ranges temporais e chaves únicas
-- **Integridade referencial:** Validar consistência entre anos
+- **Validações obrigatórias:** conforme dicionário de dados (nulos, zeros, negativos)  
+- **Completude:** registrar taxa de preenchimento por coluna  
+- **Consistência:** validar ranges temporais e chaves únicas  
+- **Integridade referencial:** validar consistência entre anos  
+
+---
+
+### 3.4 IAM
+- **GitHub Actions SA:**  
+  - Permissões:  
+    - `roles/run.admin`  
+    - `roles/storage.admin`  
+    - `roles/bigquery.admin`  
+    - `roles/iam.serviceAccountUser`  
+
+- **ENA Pipeline SA:**  
+  - Permissões:  
+    - `roles/storage.objectCreator`  
+    - `roles/bigquery.dataEditor`  
+    - `roles/secretmanager.secretAccessor`  
 
 ---
 
