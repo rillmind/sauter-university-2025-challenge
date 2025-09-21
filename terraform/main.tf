@@ -1,6 +1,6 @@
 # provider "google" {
-  # project = "project-sauter-hydro-forecast"
-  # region  = "us-central1"
+# project = "project-sauter-hydro-forecast"
+# region  = "us-central1"
 # }
 
 resource "google_project_service" "apis" {
@@ -67,8 +67,8 @@ resource "google_iam_workload_identity_pool" "github_pool" {
 
 # GitHub Workload Identity Provider (corrigido)
 resource "google_iam_workload_identity_pool_provider" "github_provider" {
-  workload_identity_pool_id           = google_iam_workload_identity_pool.github_pool.workload_identity_pool_id
-  workload_identity_pool_provider_id  = "github-provider"
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github_pool.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-provider"
   display_name                       = "GitHub Provider"
 
   oidc {
@@ -76,14 +76,14 @@ resource "google_iam_workload_identity_pool_provider" "github_provider" {
   }
 
   attribute_mapping = {
-    "google.subject"        = "assertion.sub"
-    "attribute.actor"       = "assertion.actor"
-    "attribute.aud"         = "assertion.aud"
-    "attribute.repository"  = "assertion.repository"
-    "attribute.workflow"    = "assertion.workflow"
-    "attribute.ref"         = "assertion.ref"
-    "attribute.sha"         = "assertion.sha"
-    "attribute.event_name"  = "assertion.event_name"
+    "google.subject"       = "assertion.sub"
+    "attribute.actor"      = "assertion.actor"
+    "attribute.aud"        = "assertion.aud"
+    "attribute.repository" = "assertion.repository"
+    "attribute.workflow"   = "assertion.workflow"
+    "attribute.ref"        = "assertion.ref"
+    "attribute.sha"        = "assertion.sha"
+    "attribute.event_name" = "assertion.event_name"
   }
 
   attribute_condition = "attribute.repository == 'danieladosanjos/project-sauter-hydro-forecast'"
