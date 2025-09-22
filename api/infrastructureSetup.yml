@@ -1,0 +1,57 @@
+name: 🏗️ Setup Infrastructure
+
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: project-sauter-hydro-forecast
+  GAR_LOCATION: us-central1
+
+jobs:
+  setup:
+    name: 🏗️ Configurar Infraestrutura
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: 🔐 Autenticar no GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: ☁️ Configurar gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: 📦 Criar repositório no Artifact Registry
+        run: |
+          # Verificar se o repositório já existe
+          if ! gcloud artifacts repositories describe sauter-repo --location=$GAR_LOCATION --project=$PROJECT_ID >/dev/null 2>&1; then
+            echo "🏗️ Criando repositório sauter-repo..."
+            gcloud artifacts repositories create sauter-repo \
+              --repository-format=docker \
+              --location=$GAR_LOCATION \
+              --description="Repositório Docker para API Sauter" \
+              --project=$PROJECT_ID
+            echo "✅ Repositório criado com sucesso!"
+          else
+            echo "ℹ️ Repositório sauter-repo já existe"
+          fi
+
+      - name: 🔧 Habilitar APIs necessárias
+        run: |
+          gcloud services enable run.googleapis.com
+          gcloud services enable artifactregistry.googleapis.com
+          gcloud services enable cloudbuild.googleapis.com
+          echo "✅ APIs habilitadas"
+
+      - name: 📝 Resumo
+        run: |
+          echo "## 🏗️ Configuração da Infraestrutura Concluída" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Repositório Docker: $GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/sauter-repo" >> $GITHUB_STEP_SUMMARY
+          echo "✅ APIs necessárias habilitadas" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Pronto para deploy!" >> $GITHUB_STEP_SUMMARY

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 
-from .dto import IntervaloDeDatas, RespostaPaginada
-from .service import processar_por_ano_com_preview
+from dto import IntervaloDeDatas, RespostaPaginada
+from service import processar_por_ano_com_preview
 
 app = FastAPI()
 
