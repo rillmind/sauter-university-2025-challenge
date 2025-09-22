@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 
-from dto import IntervaloDeDatas, RespostaPaginada
-from service import processar_por_ano_com_preview
+from .dto import IntervaloDeDatas, RespostaPaginada
+from .service import processar_por_ano_com_preview
 
 app = FastAPI()
 
@@ -31,7 +31,7 @@ def processar(intervalo: IntervaloDeDatas, pagina: int = Query(1, ge=1)):
     return {
       "mensagem": "Processamento concluído com sucesso.",
       "arquivos_csv": resultado["arquivos_csv"],
-      "preview": preview.dict()
+      "preview": preview.model_dump()
     }
   except ValueError as ve:
     raise HTTPException(status_code=400, detail=str(ve))
