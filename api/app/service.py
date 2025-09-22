@@ -1,6 +1,6 @@
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
 import numpy as np
@@ -92,7 +92,7 @@ def processar_por_ano_com_preview(
   if not urls_filtradas:
     raise ValueError("Nenhum arquivo encontrado para o intervalo solicitado.")
 
-  data_ref = datetime.utcnow().strftime("%Y%m%d")
+  data_ref = datetime.now(timezone.utc).strftime("%Y%m%d")
   caminhos_csv: List[str] = []
   preview_items: List[Dict[str, Any]] = []
   total_registros = 0
