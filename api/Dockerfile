@@ -1,24 +1,41 @@
-FROM python:3.12-slim
+# --- Estágio 1: Build ---
+# Usamos uma imagem Python completa para instalar as dependências.
+# Isso nos dá acesso a ferramentas de compilação que podem ser necessárias.
+FROM python:3.11-slim as builder
 
+# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
-  fastapi==0.104.1 \
-  uvicorn[standard]==0.24.0 \
-  pydantic==2.5.0 \
-  pytest==7.4.3 \
-  pytest-asyncio==0.21.1 \
-  httpx==0.25.2 \
-  pandas==2.3.2 \
-  numpy==2.3.3 \
-  requests==2.32.4 \
-  requests-file==2.0.0 \
-  requests-ftp==0.3.1 \
+# Copia o arquivo de dependências para o container
+COPY requirements.txt .
 
+# Instala as dependências em um diretório local, o que facilita copiá-las depois
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# --- Estágio 2: Final ---
+# Usamos a mesma imagem base, mas "limpa", sem as ferramentas de build.
+FROM python:3.11-slim
+
+# Define o diretório de trabalho
+WORKDIR /app
+
+# Cria um usuário não-root para rodar a aplicação (boa prática de segurança)
+RUN useradd --create-home appuser
+USER appuser
+
+# Copia as dependências que foram instaladas no estágio de "builder"
+COPY --from=builder /home/appuser/.local /home/appuser/.local
+
+# Copia todos os arquivos da sua API (.py) para o diretório de trabalho
 COPY . .
 
-# Expor a porta que a aplicação vai usar
-EXPOSE 8000
+# Expõe a porta que o Gunicorn vai usar
+EXPOSE 8080
 
-# Comando para iniciar a aplicação
-CMD ["uvicorn", "api.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Define a variável de ambiente PATH para que o executável do gunicorn seja encontrado
+ENV PATH="/home/appuser/.local/bin:${PATH}"
+
+# O comando para iniciar a aplicação quando o container rodar.
+# Usamos Gunicorn como um servidor de produção para o Uvicorn.
+# A variável $PORT é fornecida automaticamente pelo Cloud Run.
+CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8080", "main:app"]

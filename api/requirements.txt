@@ -1,0 +1,6 @@
+fastapiuvicorn[standard]
+gunicorn
+pandas
+requests
+google-cloud-storage
+google-cloud-bigquery
