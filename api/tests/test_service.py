@@ -69,7 +69,7 @@ class TestService(unittest.TestCase):
     self.assertEqual(len(resultado), 1)
     self.assertEqual(resultado.iloc[0]["valor"], 20)
 
-  @patch("app.service.requests.get")
+  @patch("src.service.requests.get")
   def test_get_parquet_urls(self, mock_get):
     mock_response = MagicMock()
     mock_response.json.return_value = {
@@ -85,9 +85,9 @@ class TestService(unittest.TestCase):
     self.assertEqual(len(urls), 2)
     self.assertIn("http://example.com/dados_2023.parquet", urls)
 
-  @patch("app.service.pd.read_parquet")
-  @patch("app.service.os.path.join")
-  @patch("app.service.pd.DataFrame.to_csv")
+  @patch("src.service.pd.read_parquet")
+  @patch("src.service.os.path.join")
+  @patch("src.service.pd.DataFrame.to_csv")
   def test_processar_url(self, mock_to_csv, mock_join, mock_read_parquet):
     mock_df = pd.DataFrame({
       "ear_data": ["2023-01-15"],
@@ -108,9 +108,9 @@ class TestService(unittest.TestCase):
     self.assertEqual(len(resultado[2]), 1)
     mock_to_csv.assert_called_once()
 
-  @patch("app.service.get_parquet_urls")
-  @patch("app.service.processar_url")
-  @patch("app.service.os.makedirs")
+  @patch("src.service.get_parquet_urls")
+  @patch("src.service.processar_url")
+  @patch("src.service.os.makedirs")
   def test_processar_por_ano_com_preview(self, mock_makedirs, mock_processar_url, mock_get_parquet_urls):
     mock_get_parquet_urls.return_value = ["http://example.com/dados_2023.parquet"]
     mock_processar_url.return_value = (

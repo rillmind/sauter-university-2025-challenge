@@ -11,7 +11,7 @@ class TestMain(unittest.TestCase):
   def setUp(self):
     self.client = TestClient(app)
 
-  @patch("app.main.processar_por_ano_com_preview")
+  @patch("src.main.processar_por_ano_com_preview")
   def test_processar_sucesso(self, mock_processar):
     mock_processar.return_value = {
       "arquivos_csv": ["test.csv"],
@@ -25,14 +25,14 @@ class TestMain(unittest.TestCase):
     self.assertEqual(data["arquivos_csv"], ["test.csv"])
     self.assertEqual(data["preview"]["total_items"], 1)
 
-  @patch("app.main.processar_por_ano_com_preview")
+  @patch("src.main.processar_por_ano_com_preview")
   def test_processar_value_error(self, mock_processar):
     mock_processar.side_effect = ValueError("Erro de valor")
     response = self.client.post("/processar", json={"firstDate": "2023-01-01", "lastDate": "2023-01-31"})
     self.assertEqual(response.status_code, 400)
     self.assertEqual(response.json()["detail"], "Erro de valor")
 
-  @patch("app.main.processar_por_ano_com_preview")
+  @patch("src.main.processar_por_ano_com_preview")
   def test_processar_exception(self, mock_processar):
     mock_processar.side_effect = Exception("Erro geral")
     response = self.client.post("/processar", json={"firstDate": "2023-01-01", "lastDate": "2023-01-31"})
