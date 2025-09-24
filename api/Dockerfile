@@ -1,29 +1,19 @@
-FROM python:3.11-slim as builder
+# Use a specific, stable version of Python as the base
+FROM python
 
-WORKDIR /install
+# Set the working directory inside the container
+WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+# Copy all your project files (main.py, etc.) into the container
+COPY . .
 
-COPY requirements.txt .
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -r requirements.txt
+# Install the Python libraries
+# --no-cache-dir keeps the image size smaller
+RUN pip install -r ./requirements.txt
 
-###
+# Expose the port the app will run on
+EXPOSE 2306
 
-FROM python:3.11-slim
-
-RUN useradd --create-home --shell /bin/bash appuser
-WORKDIR /home/appuser/app
-USER appuser
-
-COPY --from=builder /opt/venv /opt/venv
-
-COPY ./app .
-
-ENV PATH="/opt/venv/bin:$PATH"
-
-EXPOSE 8080
-
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# The command to run when the container starts
+# --host 0.0.0.0 is CRITICAL for accessing the server from outside the container
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "2306"]

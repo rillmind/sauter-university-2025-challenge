@@ -1,13 +1,15 @@
 from pydantic import BaseModel
 from datetime import date
-from typing import List
+from typing import List, Dict, Any
 
 class DateRangeRequest(BaseModel):
-    """Defines the structure for the incoming POST request body."""
     start_date: date
     end_date: date
 
 class ProcessResponse(BaseModel):
-    """Defines the final structure of the API response."""
     message: str
-    files_uploaded: List[str]
+    total_records: int
+    total_pages: int
+    current_page: int
+    page_size: int
+    data: List[Dict[str, Any]]

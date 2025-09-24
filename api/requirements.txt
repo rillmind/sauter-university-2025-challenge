@@ -6,3 +6,5 @@ polars
 pyarrow
 fsspec
 gcsfs
+httpx
+pydantic
