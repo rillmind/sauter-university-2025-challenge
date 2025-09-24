@@ -1,51 +1,45 @@
-from datetime import date
+# app/main.py
 
-from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, status
+from dto import DateRangeRequest, ProcessResponse
+from processing import run_workflow
 
-import service
+app = FastAPI()
 
-# --- Modelos de Dados da API ---
 
-class DateRangeRequest(BaseModel):
-  startDate: date = Field(..., example="2024-01-01", description="Data de início (YYYY-MM-DD)")
-  endDate: date = Field(..., example="2024-01-10", description="Data de fim (YYYY-MM-DD)")
+@app.get("/health", status_code=status.HTTP_200_OK, tags=["Monitoring"])
+def health_check():
+  """Simple health check endpoint."""
+  return {"status": "ok"}
 
-# --- Aplicação FastAPI ---
 
-app = FastAPI(
-  title="Pipeline de Dados ONS",
-  description="Uma API para orquestrar a extração, transformação e carga de dados da ONS para o GCP.",
-  version="1.0.0"
+@app.post(
+  "/process",
+  response_model=ProcessResponse,
+  tags=["Processing"],
+  summary="Fetch ONS data and upload to GCS"
 )
-
-@app.post("/run-etl-pipeline")
-def run_pipeline(date_range: DateRangeRequest = Body(...)):
+async def process_files_endpoint(request: DateRangeRequest) -> ProcessResponse:
   """
-  Este endpoint dispara o fluxo completo de ETL:
-  1. Busca os dados da ONS para o intervalo de datas.
-  2. Processa e normaliza os dados anualmente.
-  3. Salva cada ano como um arquivo CSV no Google Cloud Storage.
-  4. Carrega cada arquivo do GCS para uma tabela no BigQuery.
+  Triggers a data processing workflow for a given date range:
+  - Fetches a list of data resources from the ONS API.
+  - Filters them by the provided date range.
+  - Downloads, transforms (all columns to string), and uploads each as a Parquet file to GCS.
   """
-  try:
-    # Chama o serviço que orquestra todo o fluxo
-    result = service.run_full_etl_pipeline(
-      start_date=date_range.startDate,
-      end_date=date_range.endDate
+  if request.start_date > request.end_date:
+    raise HTTPException(
+      status_code=status.HTTP_400_BAD_REQUEST,
+      detail="start_date cannot be after end_date."
     )
-    return {
-      "status": "Sucesso",
-      "mensagem": "Pipeline de ETL executado com sucesso.",
-      "detalhes": result
-    }
-  except ValueError as ve:
-    # Erros de negócio (ex: data inválida, nenhum dado encontrado)
-    raise HTTPException(status_code=400, detail=str(ve))
-  except ConnectionError as ce:
-    # Erro de conexão com a API externa
-    raise HTTPException(status_code=503, detail=str(ce))
-  except Exception as e:
-    # Captura outros erros inesperados
-    raise HTTPException(status_code=500, detail=f"Ocorreu um erro interno inesperado: {e}")
 
+  uploaded_files = await run_workflow(request.start_date, request.end_date)
+
+  if not uploaded_files:
+    message = "Workflow finished, but no new files were uploaded."
+  else:
+    message = f"Successfully processed and uploaded {len(uploaded_files)} files."
+
+  return ProcessResponse(
+    message=message,
+    files_uploaded=uploaded_files
+  )

@@ -1,6 +1,8 @@
-fastapiuvicorn[standard]
-gunicorn
-pandas
-requests
+fastapi
+uvicorn[standard]
 google-cloud-storage
 google-cloud-bigquery
+polars
+pyarrow
+fsspec
+gcsfs
