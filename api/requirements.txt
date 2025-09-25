@@ -1,10 +1,25 @@
+# Core Web Framework
 fastapi
 uvicorn[standard]
+
+# Google Cloud Services
 google-cloud-storage
 google-cloud-bigquery
-polars
+
+# Data Processing
+pandas
 pyarrow
+polars
+
+# File System & Storage
 fsspec
 gcsfs
+
+# HTTP Client
 httpx
+
+# Data Validation
 pydantic
+
+# Environment Management
+python-dotenv

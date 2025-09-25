@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 from datetime import date
 from typing import List, Dict, Any, Hashable
@@ -18,7 +19,7 @@ ID_PACOTE = "148e56a4-5a21-4bf2-9cd7-7f89bc4ed71c"
 URL_PACOTE_ONS = f"https://dados.ons.org.br/api/3/action/package_show?id={ID_PACOTE}"
 URL_DOWNLOAD_RECURSO_ONS = f"https://dados.ons.org.br/dataset/{ID_PACOTE}/resource/"
 
-bq_client = bigquery.Client(project=ID_PROJETO) if ID_PROJETO else None
+bq_client = bigquery.Client(project=ID_PROJETO, location="us-central1") if ID_PROJETO else None
 
 
 async def obter_recursos_ons() -> List[Dict[str, Any]]:
@@ -83,10 +84,15 @@ def _buscar_e_processar_recurso(recurso: Dict[str, Any]) -> list[Any] | list[dic
     formato_arquivo = recurso.get("format", "").upper()
     print(f"  -> Processando {nome_arquivo} ({formato_arquivo})...")
 
+    with httpx.Client() as client:
+        response = client.get(url_download, follow_redirects=True, timeout=60.0)
+        response.raise_for_status()
+        content_bytes = response.content
+
     if formato_arquivo == "CSV":
-      df = pd.read_csv(url_download, sep=';', header=1, encoding='latin-1')
+      df = pd.read_csv(io.BytesIO(content_bytes), sep=';', header=1, encoding='latin-1')
     elif formato_arquivo == "PARQUET":
-      df = pd.read_parquet(url_download)
+      df = pd.read_parquet(io.BytesIO(content_bytes))
     else:
       return []
 
@@ -117,7 +123,6 @@ def _buscar_e_processar_recurso(recurso: Dict[str, Any]) -> list[Any] | list[dic
     print(f"  [!!!] ERRO CRÍTICO durante o processamento: {e}")
     return []
 
-
 async def processar_recurso(recurso: Dict[str, Any]) -> List[Dict[str, Any]]:
   """Função assíncrona que encapsula o processamento para rodar em uma thread separada."""
   return await asyncio.to_thread(_buscar_e_processar_recurso, recurso)
@@ -133,17 +138,16 @@ async def consultar_dados_por_intervalo(
     print("Erro: Cliente do BigQuery não foi inicializado. Verifique a variável de ambiente GCP_PROJECT_ID.")
     return []
 
-  # IMPORTANTE: Ajuste o nome da coluna de data ('dt_referencia') para o que você usa na sua tabela.
   query = f"""
     SELECT
       *
     FROM
       `{ID_PROJETO}.{ID_DATASET}.{ID_TABELA}`
     WHERE
-      dt_referencia >= @data_inicio
-      AND dt_referencia <= @data_fim
+      ena_data >= @data_inicio
+      AND ena_data <= @data_fim
     ORDER BY
-      dt_referencia DESC
+      ena_data DESC
     """
   job_config = bigquery.QueryJobConfig(
     query_parameters=[

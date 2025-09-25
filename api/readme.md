@@ -1,128 +1,180 @@
-# API de Processamento e Consulta de Dados do ONS
+# API de Processamento de Dados ONS
 
 Este projeto consiste em uma API desenvolvida em Python com FastAPI, projetada para automatizar o processo de extração, transformação e consulta de dados públicos disponibilizados pelo Operador Nacional do Sistema Elétrico (ONS). A aplicação busca os arquivos de um pacote de dados específico, processa-os de forma concorrente e, opcionalmente, armazena-os em um ambiente cloud (Google Cloud Storage), além de fornecer um endpoint para consultar dados previamente armazenados em um data warehouse (Google BigQuery).
 
-## Funcionalidades Principais
+## Funcionalidades
 
-- **Extração de Dados da ONS:** Conecta-se à API de dados abertos da ONS para listar os recursos de dados disponíveis.
-- **Processamento Concorrente:** Utiliza `asyncio` para baixar e processar múltiplos arquivos de dados em paralelo, otimizando o tempo de execução.
-- **Seleção Inteligente de Formato:** Prioriza arquivos no formato Parquet sobre CSV quando ambos estão disponíveis para o mesmo período, visando maior eficiência.
-- **Integração com Google Cloud:**
-  - **Storage:** Realiza o upload dos arquivos processados para um bucket no Google Cloud Storage no formato Parquet.
-  - **BigQuery:** Oferece um endpoint para consultar os dados já armazenados no BigQuery com filtros por intervalo de datas.
-- **API Robusta:** Exposição de endpoints para iniciar o processamento e para realizar consultas, com paginação de resultados.
+- **Consulta BigQuery**: Busca dados históricos armazenados no BigQuery por intervalo de datas
+- **Processamento ONS**: Baixa, processa e converte dados do portal da ONS para formato Parquet
+- **Paginação**: Suporte a paginação para grandes volumes de dados
+- **Armazenamento GCS**: Upload automático de arquivos processados para Google Cloud Storage
+- **Processamento Paralelo**: Execução concorrente para otimizar desempenho
 
-## Arquitetura e Tecnologias
+## Tecnologias
 
-O projeto é estruturado em módulos com responsabilidades bem definidas:
+- **FastAPI**: Framework web moderno e de alta performance
+- **Pydantic**: Validação de dados e serialização
+- **Pandas**: Manipulação e análise de dados
+- **Google Cloud BigQuery**: Data warehouse para consultas SQL
+- **Google Cloud Storage**: Armazenamento de arquivos
+- **HTTPX**: Cliente HTTP assíncrono
+- **Docker**: Containerização da aplicação
 
-- `main.py`: Ponto de entrada da aplicação FastAPI. Define os endpoints, validações de entrada e orquestra as chamadas para os outros módulos.
-- `processing.py`: Contém a lógica de orquestração do fluxo de processamento de dados, gerenciando a execução concorrente das tarefas.
-- `service.py`: Isola toda a lógica de negócio e comunicação com serviços externos (API da ONS, Google Cloud Storage e BigQuery).
-- `dto.py`: Define os modelos de dados (Data Transfer Objects) usando Pydantic para garantir a tipagem e validação das requisições e respostas da API.
+## Configuração
 
-**Stack Tecnológica:**
-- **Linguagem:** Python 3.9+
-- **Framework API:** FastAPI
-- **Comunicação HTTP:** httpx (cliente assíncrono)
-- **Manipulação de Dados:** pandas
-- **Computação em Nuvem:** Google Cloud BigQuery, Google Cloud Storage
-- **Execução Assíncrona:** asyncio
+### Variáveis de Ambiente
 
----
+Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 
-## Configuração do Ambiente
+```env
+# Google Cloud Platform
+GCP_PROJECT_ID=seu-projeto-gcp
+BQ_DATASET_ID=seu-dataset
+BQ_TABLE_ID=sua-tabela
+GCS_BUCKET_NAME=seu-bucket-gcs
 
-### Pré-requisitos
-- Python 3.9 ou superior
-- Uma conta no Google Cloud Platform com um projeto ativo.
-- Credenciais do GCP configuradas no ambiente local (recomenda-se o uso do `gcloud auth application-default login`).
-- Um bucket no Google Cloud Storage.
-- Um dataset e uma tabela criados no Google BigQuery.
-
-### Instalação
-
-1.  **Clone o repositório:**
-    ```sh
-    git clone https://github.com/rillmind/sauterUniversityProject.git
-    cd sauterUniversityProject
-    ```
-
-2.  **Crie e ative um ambiente virtual:**
-    ```sh
-    python -m venv venv
-    source venv/bin/activate
-    # No Windows: venv\Scripts\activate
-    ```
-
-3.  **Instale as dependências:**
-    Crie um arquivo `requirements.txt` com o seguinte conteúdo e execute o comando `pip install`:
-    ```
-    # requirements.txt
-    fastapi
-    uvicorn[standard]
-    pydantic
-    python-dotenv
-    httpx
-    pandas
-    pyarrow
-    google-cloud-bigquery
-    google-cloud-storage
-    gcsfs
-    ```
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-4.  **Configure as variáveis de ambiente:**
-    Crie um arquivo `.env` na raiz do projeto e preencha com as informações do seu ambiente Google Cloud.
-
-    ```
-    # .env
-    BQ_DATASET_ID="seu_dataset_bigquery"
-    BQ_TABLE_ID="sua_tabela_bigquery"
-    GCS_BUCKET_NAME="nome-do-seu-bucket-gcs"
-    GCP_PROJECT_ID="seu-id-de-projeto-gcp"
-    ```
-
-### Execução
-
-Para iniciar a aplicação localmente, execute o seguinte comando na raiz do projeto:
-
-```sh
-uvicorn main:app --reload
+# Configurações opcionais podem ser adicionadas aqui
 ```
 
-A API estará disponível em http://127.0.0.1:8000, e a documentação interativa (Swagger UI) pode ser acessada em http://127.0.0.1:8000/docs.
+### Instalação Local
 
-## Endpoints da API
+1. Clone o repositório:
+```bash
+git clone https://github.com/rillmind/sauter-university-2025-challenge.git
+cd sauter-university-2025-challenge/api
+```
 
-`POST /processar`
+2. Instale as dependências:
+```bash
+pip install -r requirements.txt
+```
 
-Inicia o fluxo de trabalho de busca e processamento dos arquivos da ONS para um determinado intervalo de datas. Os dados processados são retornados de forma paginada no corpo da resposta.
+3. Configure as credenciais do Google Cloud:
+```bash
+gcloud auth application-default login
+# ou configure a variável GOOGLE_APPLICATION_CREDENTIALS
+```
 
-### Corpo da Requisição (JSON):
+4. Execute a aplicação:
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+```
 
+### Instalação com Docker
+
+1. Build da imagem:
+```bash
+docker build -t api-ons .
+```
+
+2. Execute o container:
+```bash
+docker run -p 8080:8080 --env-file .env api-ons
+```
+
+## Endpoints
+
+### Consultar Dados no BigQuery
+```
+GET /consultar
+```
+
+Consulta dados históricos no BigQuery por intervalo de datas com paginação.
+
+**Parâmetros:**
+- `data_inicio` (date): Data de início no formato AAAA-MM-DD
+- `data_fim` (date): Data de fim no formato AAAA-MM-DD  
+- `pagina` (int, opcional): Número da página (padrão: 1)
+- `tamanho` (int, opcional): Itens por página (padrão: 20)
+
+**Exemplo:**
+```bash
+curl "http://localhost:8080/consultar?data_inicio=2023-01-01&data_fim=2023-12-31&pagina=1&tamanho=50"
+```
+
+### Processar Dados da ONS
+```
+POST /processar
+```
+
+Baixa e processa dados do portal da ONS para o período especificado.
+
+**Corpo da Requisição:**
 ```json
 {
-  "data_inicio": "YYYY-MM-DD",
-  "data_fim": "YYYY-MM-DD"
+  "data_inicio": "2023-01-01",
+  "data_fim": "2023-12-31"
 }
 ```
 
-### Parâmetros de Query:
+**Parâmetros de Query:**
+- `pagina` (int, opcional): Número da página (padrão: 1)
+- `tamanho` (int, opcional): Itens por página (padrão: 50)
 
-- `pagina` (int, opcional, default=1): Número da página.
-
-- `tamanho` (int, opcional, default=50): Quantidade de registros por página.
-
-### Exemplo de uso com curl:
-
-``` sh
-curl -X POST "[http://127.0.0.1:8000/processar?pagina=1&tamanho=10](http://127.0.0.1:8000/processar?pagina=1&tamanho=10)" \
--H "Content-Type: application/json" \
--d '{
-  "data_inicio": "2022-01-01",
-  "data_fim": "2022-12-31"
-}'
+**Exemplo:**
+```bash
+curl -X POST "http://localhost:8080/processar?pagina=1&tamanho=100" \
+  -H "Content-Type: application/json" \
+  -d '{"data_inicio": "2023-01-01", "data_fim": "2023-12-31"}'
 ```
+
+### Resposta Padrão
+
+Ambos os endpoints retornam a seguinte estrutura:
+
+```json
+{
+  "mensagem": "Descrição do resultado",
+  "total_registros": 1500,
+  "total_paginas": 30,
+  "pagina_atual": 1,
+  "tamanho_pagina": 50,
+  "dados": [
+    {
+      "campo1": "valor1",
+      "campo2": "valor2"
+    }
+  ]
+}
+```
+
+## Arquitetura
+
+### Fluxo de Processamento
+
+1. **Busca de Recursos**: Consulta a API da ONS para obter lista de recursos disponíveis
+2. **Filtro por Formato**: Seleciona o melhor formato disponível (Parquet > CSV) para cada ano
+3. **Processamento Paralelo**: Baixa e processa múltiplos recursos simultaneamente
+4. **Conversão**: Converte dados para formato Parquet uniformizado
+5. **Upload GCS**: Armazena arquivos processados no Google Cloud Storage
+6. **Retorno**: Retorna dados processados com paginação
+
+## Desenvolvimento
+
+### Executar em Modo de Desenvolvimento
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8080
+```
+
+### Documentação da API
+
+Após iniciar a aplicação, acesse:
+- Swagger UI: `http://localhost:8080/docs`
+- ReDoc: `http://localhost:8080/redoc`
+
+## Monitoramento
+
+A aplicação inclui logs detalhados para monitoramento do processamento:
+
+- Status de download de recursos
+- Progresso de conversão de arquivos
+- Estatísticas de processamento
+- Erros e exceções
+
+## Considerações
+
+- **Rate Limiting**: A API da ONS pode ter limitações de taxa
+- **Memória**: Processamento de grandes volumes pode exigir recursos significativos
+- **Timeout**: Downloads podem demorar dependendo do tamanho dos arquivos
+- **Credenciais**: Certifique-se de que as credenciais do GCP estão configuradas corretamente
