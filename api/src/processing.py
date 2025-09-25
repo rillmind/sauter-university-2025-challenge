@@ -1,36 +1,37 @@
 import asyncio
 from datetime import date
 from typing import List, Dict, Any
+
 import service
 
 
-async def run_workflow(start_date: date, end_date: date) -> List[Dict[str, Any]]:
+async def executar_fluxo(data_inicio: date, data_fim: date) -> List[Dict[str, Any]]:
   """
-  Orchestrates the entire workflow for the given date range, returning all data.
+  Orquestra todo o fluxo de trabalho para o intervalo de datas, retornando todos os dados.
   """
-  print("Fetching ONS resource list...")
-  all_resources = await service.get_ons_resources()
-  if not all_resources:
-    print("Could not retrieve any resources from ONS.")
+  print("Buscando a lista de recursos da ONS...")
+  todos_os_recursos = await service.obter_recursos_ons()
+  if not todos_os_recursos:
+    print("Não foi possível obter os recursos da ONS.")
     return []
 
-  print("Filtering for best available format...")
-  resources_to_process = service.filter_resources_by_year_and_format(
-    all_resources, start_date, end_date
+  print("Filtrando pelo melhor formato disponível...")
+  recursos_para_processar = service.filtrar_recursos_por_ano_e_formato(
+    todos_os_recursos, data_inicio, data_fim
   )
 
-  if not resources_to_process:
-    print(f"No resources found for the date range.")
+  if not recursos_para_processar:
+    print(f"Nenhum recurso encontrado para o período solicitado.")
     return []
 
-  print(f"Found {len(resources_to_process)} resources. Starting parallel processing...")
+  print(f"Encontrados {len(recursos_para_processar)} recursos. Iniciando processamento paralelo...")
 
-  # CORREÇÃO APLICADA AQUI: O nome da função foi atualizado
-  tasks = [service.process_resource(res) for res in resources_to_process]
-  results = await asyncio.gather(*tasks)
+  # Cria uma lista de tarefas para serem executadas de forma concorrente.
+  tarefas = [service.processar_recurso(res) for res in recursos_para_processar]
+  resultados = await asyncio.gather(*tarefas)
 
-  # Achatando la lista de listas de resultados em uma única lista de registros
-  all_records = [record for result_list in results for record in result_list if result_list]
+  # "Achata" a lista de listas de resultados em uma única lista de registros.
+  todos_os_registros = [registro for lista_resultado in resultados for registro in lista_resultado if lista_resultado]
 
-  print(f"Workflow complete. Processed {len(all_records)} total records.")
-  return all_records
+  print(f"Fluxo de trabalho concluído. Total de {len(todos_os_registros)} registros processados.")
+  return todos_os_registros
