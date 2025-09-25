@@ -1,116 +1,170 @@
-import os
-import httpx
 import asyncio
+import io
+import os
 from datetime import date
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Hashable
+
+import httpx
 import pandas as pd
+from google.cloud import bigquery
 
-GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
+# Configurações Google Cloud
+ID_TABELA = os.getenv("BQ_TABLE_ID")
+ID_DATASET = os.getenv("BQ_DATASET_ID")
+ID_PROJETO = os.getenv("GCP_PROJECT_ID")
+NOME_BUCKET = os.getenv("GCS_BUCKET_NAME")
 
-PACKAGE_ID = "148e56a4-5a21-4bf2-9cd7-7f89bc4ed71c"
-ONS_PACKAGE_URL = f"https://dados.ons.org.br/api/3/action/package_show?id={PACKAGE_ID}"
-ONS_DOWNLOAD_RESOURCE_URL = f"https://dados.ons.org.br/dataset/{PACKAGE_ID}/resource/"
+# Configurações ONS
+ID_PACOTE = "148e56a4-5a21-4bf2-9cd7-7f89bc4ed71c"
+URL_PACOTE_ONS = f"https://dados.ons.org.br/api/3/action/package_show?id={ID_PACOTE}"
+URL_DOWNLOAD_RECURSO_ONS = f"https://dados.ons.org.br/dataset/{ID_PACOTE}/resource/"
+
+bq_client = bigquery.Client(project=ID_PROJETO, location="us-central1") if ID_PROJETO else None
 
 
-async def get_ons_resources() -> List[Dict[str, Any]]:
-  """Fetches the list of all available data resources from the ONS package API."""
+async def obter_recursos_ons() -> List[Dict[str, Any]]:
+  """Busca a lista de todos os recursos de dados disponíveis no pacote da ONS."""
   try:
     async with httpx.AsyncClient(timeout=30.0) as client:
-      response = await client.get(ONS_PACKAGE_URL)
+      response = await client.get(URL_PACOTE_ONS)
       response.raise_for_status()
-      package_data = response.json()
-      return package_data.get("result", {}).get("resources", [])
+      dados_pacote = response.json()
+      return dados_pacote.get("result", {}).get("resources", [])
   except httpx.RequestError as e:
-    print(f"Error fetching ONS package data: {e}")
+    print(f"Erro ao buscar os dados do pacote ONS: {e}")
     return []
 
 
-def filter_resources_by_year_and_format(
-    resources: List[Dict[str, Any]], start_date_req: date, end_date_req: date
+def filtrar_recursos_por_ano_e_formato(
+    recursos: List[Dict[str, Any]], data_inicio_req: date, data_fim_req: date
 ) -> List[Dict[str, Any]]:
-  """Finds the best available format (preferring Parquet) for each requested year."""
-  best_resources_by_year = {}
-  requested_years = set(range(start_date_req.year, end_date_req.year + 1))
-  for res in resources:
+  """Encontra o melhor formato disponível (dando preferência a Parquet) para cada ano solicitado."""
+  melhores_recursos_por_ano = {}
+  anos_solicitados = set(range(data_inicio_req.year, data_fim_req.year + 1))
+  for rec in recursos:
     try:
-      url = res.get("url", "")
-      format_type = res.get("format", "").upper()
-      if format_type not in ["PARQUET", "CSV"]:
+      url = rec.get("url", "")
+      tipo_formato = rec.get("format", "").upper()
+      if tipo_formato not in ["PARQUET", "CSV"]:
         continue
-      filename = url.split("/")[-1]
-      year_str = filename.replace(".csv", "").replace(".parquet", "").split("_")[-1]
-      if not year_str.isdigit():
+
+      nome_arquivo = url.split("/")[-1]
+      ano_str = nome_arquivo.replace(".csv", "").replace(".parquet", "").split("_")[-1]
+
+      if not ano_str.isdigit():
         continue
-      year_str = (
-        year_str
-        if len(year_str) == 4
-        else year_str[:4] + year_str[4:6] + year_str[6:8]
-      )
-      resource_year = int(year_str)
-      if resource_year in requested_years:
-        if resource_year not in best_resources_by_year or format_type == "PARQUET":
-          res['year'] = resource_year
-          best_resources_by_year[resource_year] = res
+
+      ano_recurso = int(ano_str if len(ano_str) == 4 else ano_str[:4])
+
+      if ano_recurso in anos_solicitados:
+        if ano_recurso not in melhores_recursos_por_ano or tipo_formato == "PARQUET":
+          rec['ano'] = ano_recurso
+          melhores_recursos_por_ano[ano_recurso] = rec
+
     except (ValueError, IndexError):
       continue
-  final_list = list(best_resources_by_year.values())
-  print(f"DEBUG: Found {len(final_list)} optimal resources to process.")
-  return final_list
+
+  lista_final = list(melhores_recursos_por_ano.values())
+  print(f"DEBUG: Encontrados {len(lista_final)} recursos ideais para processar.")
+  return lista_final
 
 
-def _fetch_and_process_resource(resource: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _buscar_e_processar_recurso(recurso: Dict[str, Any]) -> list[Any] | list[dict[Hashable, Any]]:
   """
-  Processes data, uploads it as Parquet to GCS, and returns data as a list of dicts.
+  Processa um único recurso: baixa, converte para Parquet no GCS e retorna os dados.
   """
-  download_url = ONS_DOWNLOAD_RESOURCE_URL + resource.get("id") + "/download"
-  print(download_url)
-  print(
-    f"  -> Fetching {resource.get('name')} ({resource.get('format')})..."
-  )
-  if not download_url:
+  url_download = URL_DOWNLOAD_RECURSO_ONS + recurso.get("id") + "/download"
+  print(f"  -> Buscando {recurso.get('name')} ({recurso.get('format')})...")
+
+  if not url_download:
     return []
 
   try:
-    print(f"  -> Processing {download_url}...")
-    file_format = resource.get("format", "").upper()
+    nome_arquivo = recurso.get("name")
+    formato_arquivo = recurso.get("format", "").upper()
+    print(f"  -> Processando {nome_arquivo} ({formato_arquivo})...")
 
-    if file_format == "CSV":
-      df = pd.read_csv(download_url, sep=';', header=1, encoding='latin-1')
-    elif file_format == "PARQUET":
-      df = pd.read_parquet(download_url)
+    with httpx.Client() as client:
+        response = client.get(url_download, follow_redirects=True, timeout=60.0)
+        response.raise_for_status()
+        content_bytes = response.content
+
+    if formato_arquivo == "CSV":
+      df = pd.read_csv(io.BytesIO(content_bytes), sep=';', header=1, encoding='latin-1')
+    elif formato_arquivo == "PARQUET":
+      df = pd.read_parquet(io.BytesIO(content_bytes))
     else:
       return []
 
-    if GCS_BUCKET_NAME:
+    if NOME_BUCKET:
       try:
-        ingestion_date_str = date.today().strftime('%Y-%m-%d')
-        original_filename = download_url.split("/")[-1]
-        base_name = os.path.splitext(original_filename)[0]
-        gcs_path = f"gs://{GCS_BUCKET_NAME}/dt={ingestion_date_str}/{base_name}.parquet"
+        data_ingestao = date.today().strftime('%Y-%m-%d')
+        nome_original = url_download.split("/")[-1]
+        nome_base = os.path.splitext(nome_original)[0]
+        caminho_gcs = f"gs://{NOME_BUCKET}/dt={data_ingestao}/{nome_base}.parquet"
 
-        print("  -> Converting dataframe to string types for Parquet file...")
-        df_for_parquet = df.astype(str)
+        print("  -> Convertendo todas as colunas para string para o arquivo Parquet...")
+        df_para_parquet = df.astype(str)
 
-        print(f"  -> Uploading to {gcs_path}...")
-        df_for_parquet.to_parquet(gcs_path, index=False)
-        print(f"  SUCCESS! Uploaded string-typed parquet to GCS.")
+        print(f"  -> Fazendo upload para {caminho_gcs}...")
+        df_para_parquet.to_parquet(caminho_gcs, index=False)
+        print(f"  SUCESSO! Arquivo Parquet (com strings) enviado para o GCS.")
 
       except Exception as e:
-        print(f"  [!!!] GCS UPLOAD FAILED: {e}")
+        print(f"  [!!!] FALHA NO UPLOAD PARA O GCS: {e}")
     else:
-      print("  -> WARNING: GCS_BUCKET_NAME not set. Skipping upload.")
+      print("  -> AVISO: NOME_BUCKET_GCS não configurado. Upload ignorado.")
 
     df = df.where(pd.notna(df), None)
-    print(f"  SUCCESS! Processed {len(df)} records from {download_url}")
+    print(f"  SUCESSO! Processados {len(df)} registros de {nome_arquivo}")
     return df.to_dict(orient='records')
 
   except Exception as e:
-    print(f"  [!!!] CRITICAL ERROR during processing: {e}")
-    import traceback
-    traceback.print_exc()
+    print(f"  [!!!] ERRO CRÍTICO durante o processamento: {e}")
     return []
 
+async def processar_recurso(recurso: Dict[str, Any]) -> List[Dict[str, Any]]:
+  """Função assíncrona que encapsula o processamento para rodar em uma thread separada."""
+  return await asyncio.to_thread(_buscar_e_processar_recurso, recurso)
 
-async def process_resource(resource: Dict[str, Any]) -> List[Dict[str, Any]]:
-  """Async wrapper for the data processing function."""
-  return await asyncio.to_thread(_fetch_and_process_resource, resource)
+
+async def consultar_dados_por_intervalo(
+    data_inicio: date, data_fim: date
+) -> List[Dict[str, Any]]:
+  """
+  Executa uma consulta no BigQuery para buscar registros num intervalo de datas.
+  """
+  if not bq_client:
+    print("Erro: Cliente do BigQuery não foi inicializado. Verifique a variável de ambiente GCP_PROJECT_ID.")
+    return []
+
+  query = f"""
+    SELECT
+      *
+    FROM
+      `{ID_PROJETO}.{ID_DATASET}.{ID_TABELA}`
+    WHERE
+      ena_data >= @data_inicio
+      AND ena_data <= @data_fim
+    ORDER BY
+      ena_data DESC
+    """
+  job_config = bigquery.QueryJobConfig(
+    query_parameters=[
+      bigquery.ScalarQueryParameter("data_inicio", "DATE", data_inicio),
+      bigquery.ScalarQueryParameter("data_fim", "DATE", data_fim),
+    ]
+  )
+  try:
+    print(f"Executando a consulta no BigQuery no intervalo de {data_inicio} a {data_fim}...")
+    # A API do cliente Python do BigQuery é síncrona, então a executamos em uma thread separada
+    # para não bloquear o loop de eventos do asyncio.
+    query_job = await asyncio.to_thread(bq_client.query, query, job_config=job_config)
+
+    resultados = await asyncio.to_thread(lambda: [dict(row) for row in query_job.result()])
+
+    print(f"Consulta concluída. {len(resultados)} registros encontrados.")
+    return resultados
+  except Exception as e:
+    print(f"Erro ao consultar o BigQuery: {e}")
+    return []

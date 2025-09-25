@@ -1,54 +1,98 @@
 import math
-from fastapi import FastAPI, HTTPException, status, Query
-from dto import DateRangeRequest, ProcessResponse
-from processing import run_workflow
+from datetime import date
+
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, status, Query
+
+from dto import RequisicaoIntervaloDatas, RespostaProcessamento
+from processing import executar_fluxo
+from service import consultar_dados_por_intervalo
 
 load_dotenv()
 
 app = FastAPI()
 
 
-@app.get("/health", status_code=status.HTTP_200_OK, tags=["Monitoring"])
-def health_check():
-  """Simple health check endpoint."""
+@app.get("/health", status_code=status.HTTP_200_OK, tags=["Monitoramento"])
+def verificar_saude():
+  """Endpoint simples para verificar se a API está no ar."""
   return {"status": "ok"}
 
 
-@app.post("/process", response_model=ProcessResponse)
-async def process_files_endpoint(
-    request: DateRangeRequest,
-    page: int = Query(1, description="Page number to retrieve", ge=1),
-    size: int = Query(20, description="Number of items per page", ge=1),
-) -> ProcessResponse:
+@app.get("/consultar", response_model=RespostaProcessamento, tags=["Consulta BigQuery"])
+async def endpoint_consultar_bigquery(
+    data_inicio: date = Query(..., description="Data de início no formato AAAA-MM-DD"),
+    data_fim: date = Query(..., description="Data de fim no formato AAAA-MM-DD"),
+    pagina: int = Query(1, description="Número da página a ser retornada", ge=1),
+    tamanho: int = Query(20, description="Quantidade de itens por página", ge=1),
+) -> RespostaProcessamento:
   """
-  Triggers a data processing workflow and returns the data paginated in the response body.
+  Consulta o BigQuery por um intervalo de datas e retorna os resultados paginados.
   """
-  if request.start_date > request.end_date:
+  if data_inicio > data_fim:
     raise HTTPException(
       status_code=status.HTTP_400_BAD_REQUEST,
-      detail="start_date cannot be after end_date."
+      detail="A data de início não pode ser posterior à data de fim."
     )
 
-  all_records = await run_workflow(request.start_date, request.end_date)
+  todos_os_registros = await consultar_dados_por_intervalo(data_inicio, data_fim)
 
-  total_records = len(all_records)
-  total_pages = math.ceil(total_records / size) if total_records > 0 else 0
+  total_de_registros = len(todos_os_registros)
+  total_de_paginas = math.ceil(total_de_registros / tamanho) if total_de_registros > 0 else 0
+  indice_inicio = (pagina - 1) * tamanho
+  indice_fim = indice_inicio + tamanho
+  dados_paginados = todos_os_registros[indice_inicio:indice_fim]
 
-  start_index = (page - 1) * size
-  end_index = start_index + size
-  paginated_data = all_records[start_index:end_index]
-
-  if not all_records:
-    message = "Workflow finished, but no data was processed."
+  if not todos_os_registros:
+    mensagem = "Nenhum dado encontrado no BigQuery para o período especificado."
   else:
-    message = f"Successfully processed {total_records} records."
+    mensagem = f"Consulta retornou {total_de_registros} registros com sucesso."
 
-  return ProcessResponse(
-    message=message,
-    total_records=total_records,
-    total_pages=total_pages,
-    current_page=page,
-    page_size=size,
-    data=paginated_data,
+  return RespostaProcessamento(
+    mensagem=mensagem,
+    total_registros=total_de_registros,
+    total_paginas=total_de_paginas,
+    pagina_atual=pagina,
+    tamanho_pagina=tamanho,
+    dados=dados_paginados,
+  )
+
+
+@app.post("/processar", response_model=RespostaProcessamento)
+async def endpoint_processar_arquivos(
+    requisicao: RequisicaoIntervaloDatas,
+    pagina: int = Query(1, description="Número da página a ser retornada", ge=1),
+    tamanho: int = Query(50, description="Quantidade de itens por página", ge=1),
+) -> RespostaProcessamento:
+  """
+  Inicia o fluxo de processamento de dados e retorna os dados paginados no corpo da resposta.
+  """
+  if requisicao.data_inicio > requisicao.data_fim:
+    raise HTTPException(
+      status_code=status.HTTP_400_BAD_REQUEST,
+      detail="A data de início não pode ser posterior à data de fim."
+    )
+
+  todos_os_registros = await executar_fluxo(requisicao.data_inicio, requisicao.data_fim)
+
+  # Lógica para calcular a paginação dos resultados.
+  total_de_registros = len(todos_os_registros)
+  total_de_paginas = math.ceil(total_de_registros / tamanho) if total_de_registros > 0 else 0
+
+  indice_inicio = (pagina - 1) * tamanho
+  indice_fim = indice_inicio + tamanho
+  dados_paginados = todos_os_registros[indice_inicio:indice_fim]
+
+  if not todos_os_registros:
+    mensagem = "O fluxo de trabalho terminou, mas nenhum dado foi processado."
+  else:
+    mensagem = f"Processados {total_de_registros} registros com sucesso."
+
+  return RespostaProcessamento(
+    mensagem=mensagem,
+    total_registros=total_de_registros,
+    total_paginas=total_de_paginas,
+    pagina_atual=pagina,
+    tamanho_pagina=tamanho,
+    dados=dados_paginados,
   )
