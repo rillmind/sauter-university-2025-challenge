@@ -8,6 +8,8 @@
 - Stênio
 - Raul
 
+## [readme](./api/readme.md) da api
+
 ![Architecture](./img/university.drawio.png)
 
 Sobre o desafio:

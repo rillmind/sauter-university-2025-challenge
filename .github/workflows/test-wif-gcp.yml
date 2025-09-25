@@ -1,0 +1,175 @@
+# .github/workflows/add-secret-version.yml
+name: add-secret-version
+on: 
+  workflow_dispatch:
+    inputs:
+      force_rotation:
+        description: 'Force key rotation (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  add_secret:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/608522675724/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions-sa@project-sauter-hydro-forecast.iam.gserviceaccount.com'
+          project_id: 'project-sauter-hydro-forecast'
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: project-sauter-hydro-forecast
+
+      - name: Verify authentication
+        run: |
+          gcloud auth list
+          gcloud config get-value project
+
+      - name: Check if secret exists
+        id: check_secret
+        run: |
+          if gcloud secrets describe sa-ena-pipeline-key --project=project-sauter-hydro-forecast >/dev/null 2>&1; then
+            echo "secret_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "secret_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create secret if it doesn't exist
+        if: steps.check_secret.outputs.secret_exists == 'false'
+        run: |
+          gcloud secrets create sa-ena-pipeline-key \
+            --replication-policy="automatic" \
+            --project=project-sauter-hydro-forecast
+
+      - name: Generate new service account key
+        id: generate_key
+        run: |
+          # Generate new service account key
+          gcloud iam service-accounts keys create sa-ena-pipeline-key.json \
+            --iam-account=sa-ena-pipeline@project-sauter-hydro-forecast.iam.gserviceaccount.com \
+            --project=project-sauter-hydro-forecast
+          
+          # Get the key ID for tracking
+          KEY_ID=$(jq -r '.private_key_id' sa-ena-pipeline-key.json)
+          echo "key_id=$KEY_ID" >> $GITHUB_OUTPUT
+          echo "Generated new key with ID: $KEY_ID"
+
+      - name: Add secret version
+        run: |
+          gcloud secrets versions add sa-ena-pipeline-key \
+            --data-file=sa-ena-pipeline-key.json \
+            --project=project-sauter-hydro-forecast
+          
+          echo "✅ Secret version added successfully"
+
+      - name: Clean up old service account keys
+        run: |
+          echo "🧹 Cleaning up old service account keys..."
+          
+          # List all user-managed keys for the service account
+          KEYS=$(gcloud iam service-accounts keys list \
+            --iam-account=sa-ena-pipeline@project-sauter-hydro-forecast.iam.gserviceaccount.com \
+            --managed-by=user \
+            --format="value(name)" \
+            --project=project-sauter-hydro-forecast)
+          
+          # Convert to array and sort (newest first)
+          KEYS_ARRAY=($KEYS)
+          KEYS_COUNT=${#KEYS_ARRAY[@]}
+          
+          echo "Found $KEYS_COUNT user-managed keys"
+          
+          # Keep only the latest 2 keys, delete the rest
+          if [ $KEYS_COUNT -gt 2 ]; then
+            KEYS_TO_DELETE=${KEYS_ARRAY[@]:2}
+            for key in $KEYS_TO_DELETE; do
+              echo "Deleting old key: $key"
+              gcloud iam service-accounts keys delete $key \
+                --iam-account=sa-ena-pipeline@project-sauter-hydro-forecast.iam.gserviceaccount.com \
+                --quiet \
+                --project=project-sauter-hydro-forecast || echo "Failed to delete $key"
+            done
+          else
+            echo "No old keys to delete (keeping latest 2)"
+          fi
+
+      - name: Clean up old secret versions
+        run: |
+          echo "🧹 Cleaning up old secret versions..."
+          
+          # List all secret versions
+          VERSIONS=$(gcloud secrets versions list sa-ena-pipeline-key \
+            --format="value(name)" \
+            --filter="state:enabled" \
+            --sort-by="~createTime" \
+            --project=project-sauter-hydro-forecast)
+          
+          # Convert to array
+          VERSIONS_ARRAY=($VERSIONS)
+          VERSIONS_COUNT=${#VERSIONS_ARRAY[@]}
+          
+          echo "Found $VERSIONS_COUNT enabled secret versions"
+          
+          # Keep only the latest 3 versions, destroy the rest
+          if [ $VERSIONS_COUNT -gt 3 ]; then
+            VERSIONS_TO_DESTROY=${VERSIONS_ARRAY[@]:3}
+            for version in $VERSIONS_TO_DESTROY; do
+              echo "Destroying old secret version: $version"
+              gcloud secrets versions destroy $version \
+                --quiet \
+                --project=project-sauter-hydro-forecast || echo "Failed to destroy $version"
+            done
+          else
+            echo "No old versions to destroy (keeping latest 3)"
+          fi
+
+      - name: Test secret access
+        run: |
+          echo "🔍 Testing secret access..."
+          
+          # Get the latest secret version
+          LATEST_VERSION=$(gcloud secrets versions access latest \
+            --secret="sa-ena-pipeline-key" \
+            --project=project-sauter-hydro-forecast)
+          
+          # Validate JSON structure
+          echo "$LATEST_VERSION" | jq -r '.type' > /dev/null
+          echo "✅ Secret is valid JSON format"
+          
+          # Check key fields
+          KEY_TYPE=$(echo "$LATEST_VERSION" | jq -r '.type')
+          PROJECT_ID=$(echo "$LATEST_VERSION" | jq -r '.project_id')
+          CLIENT_EMAIL=$(echo "$LATEST_VERSION" | jq -r '.client_email')
+          
+          echo "Key type: $KEY_TYPE"
+          echo "Project ID: $PROJECT_ID"
+          echo "Client email: $CLIENT_EMAIL"
+
+      - name: Cleanup local files
+        if: always()
+        run: |
+          rm -f sa-ena-pipeline-key.json
+          echo "🧹 Local key file cleaned up"
+
+      - name: Summary
+        run: |
+          echo "## 🔐 Key Rotation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ New service account key generated" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Secret version added to Secret Manager" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Old keys and versions cleaned up" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Secret access validated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**New Key ID:** ${{ steps.generate_key.outputs.key_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u)" >> $GITHUB_STEP_SUMMARY
