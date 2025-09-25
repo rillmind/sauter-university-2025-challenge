@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+google-cloud-storage
+google-cloud-bigquery
+polars
+pyarrow
+fsspec
+gcsfs
+httpx
+pydantic

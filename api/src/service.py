@@ -1,121 +1,116 @@
 import os
-import re
-from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, Tuple
-
-import numpy as np
+import httpx
+import asyncio
+from datetime import date
+from typing import List, Dict, Any
 import pandas as pd
-import requests
 
-COLUNA_DE_DATA = "ear_data"
-PADRAO_ANO_PARQUET = re.compile(r'_(\d{4})\.parquet')
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 
-
-def filtrar_urls_por_ano(
-    urls: List[str],
-    anos: range
-) -> List[str]:
-  padrao = re.compile(r'_(\d{4})\.parquet')
-  return [u for u in urls if (m := padrao.search(u)) and int(m.group(1)) in anos]
+PACKAGE_ID = "148e56a4-5a21-4bf2-9cd7-7f89bc4ed71c"
+ONS_PACKAGE_URL = f"https://dados.ons.org.br/api/3/action/package_show?id={PACKAGE_ID}"
+ONS_DOWNLOAD_RESOURCE_URL = f"https://dados.ons.org.br/dataset/{PACKAGE_ID}/resource/"
 
 
-def normalizar_e_filtrar_df_por_intervalo(df: pd.DataFrame, first_date, last_date) -> pd.DataFrame:
-  if COLUNA_DE_DATA not in df.columns:
-    return pd.DataFrame()
-  df = df.copy()
-  df[COLUNA_DE_DATA] = pd.to_datetime(df[COLUNA_DE_DATA], errors="coerce").dt.date
-  df = df.dropna(subset=[COLUNA_DE_DATA])
-  df = df[(df[COLUNA_DE_DATA] >= first_date) & (df[COLUNA_DE_DATA] <= last_date)]
-  if df.empty:
-    return df
-  df = df.sort_values(by=[COLUNA_DE_DATA])
-  df[COLUNA_DE_DATA] = df[COLUNA_DE_DATA].astype(str)
-  df = df.replace([np.inf, -np.inf], None)
-  df = df.where(pd.notna(df), None)
-  return df
+async def get_ons_resources() -> List[Dict[str, Any]]:
+  """Fetches the list of all available data resources from the ONS package API."""
+  try:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+      response = await client.get(ONS_PACKAGE_URL)
+      response.raise_for_status()
+      package_data = response.json()
+      return package_data.get("result", {}).get("resources", [])
+  except httpx.RequestError as e:
+    print(f"Error fetching ONS package data: {e}")
+    return []
 
 
-def extrair_ano(url: str) -> Optional[str]:
-  m = PADRAO_ANO_PARQUET.search(url)
-  return m.group(1) if m else None
-
-
-def nome_csv(ano: Optional[str], first_date, last_date, data_ref: str) -> str:
-  a = ano or "desconhecido"
-  return f"ons_reservatorios_{a}_{first_date.isoformat()}_{last_date.isoformat()}_{data_ref}.csv"
-
-
-def records_para_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
-  df = df.replace([np.inf, -np.inf], None)
-  df = df.astype(object).where(pd.notna(df), None)
-  return df.to_dict(orient="records")
-
-
-def get_parquet_urls() -> List[str]:
-  url = "https://dados.ons.org.br/api/3/action/package_show?id=61e92787-9847-4731-8b73-e878eb5bc158"
-  resp = requests.get(url, timeout=60)
-  resp.raise_for_status()
-  recursos = resp.json().get("result", {}).get("resources", [])
-  urls = sorted([r.get("url", "") for r in recursos if r.get("url", "").endswith(".parquet")])
-  if not urls:
-    raise ValueError("Nenhum arquivo .parquet encontrado.")
-  return urls
-
-
-def processar_url(url: str, first_date, last_date, diretorio_saida: str, data_ref: str) -> Optional[
-  Tuple[str, int, List[Dict[str, Any]]]]:
-  df = pd.read_parquet(url)
-  df = normalizar_e_filtrar_df_por_intervalo(df, first_date, last_date)
-  if df.empty:
-    return None
-  ano = extrair_ano(url)
-  nome_arquivo = nome_csv(ano, first_date, last_date, data_ref)
-  caminho_csv = os.path.join(diretorio_saida, nome_arquivo)
-  df.to_csv(caminho_csv, index=False)
-  registros = records_para_json(df)
-  return caminho_csv, len(df), registros
-
-
-def processar_por_ano_com_preview(
-    first_date,
-    last_date,
-    diretorio_saida: str = "data/processed",
-    preview_limit: int = 50
-) -> Dict[str, Any]:
-  if first_date > last_date:
-    raise ValueError("firstDate não pode ser maior que lastDate.")
-  os.makedirs(diretorio_saida, exist_ok=True)
-
-  urls = get_parquet_urls()
-  anos = range(first_date.year, last_date.year + 1)
-  urls_filtradas = filtrar_urls_por_ano(urls, anos)
-  if not urls_filtradas:
-    raise ValueError("Nenhum arquivo encontrado para o intervalo solicitado.")
-
-  data_ref = datetime.now(timezone.utc).strftime("%Y%m%d")
-  caminhos_csv: List[str] = []
-  preview_items: List[Dict[str, Any]] = []
-  total_registros = 0
-
-  for url in urls_filtradas:
+def filter_resources_by_year_and_format(
+    resources: List[Dict[str, Any]], start_date_req: date, end_date_req: date
+) -> List[Dict[str, Any]]:
+  """Finds the best available format (preferring Parquet) for each requested year."""
+  best_resources_by_year = {}
+  requested_years = set(range(start_date_req.year, end_date_req.year + 1))
+  for res in resources:
     try:
-      resultado = processar_url(url, first_date, last_date, diretorio_saida, data_ref)
-      if not resultado:
+      url = res.get("url", "")
+      format_type = res.get("format", "").upper()
+      if format_type not in ["PARQUET", "CSV"]:
         continue
-      caminho_csv, qtd, registros = resultado
-      caminhos_csv.append(caminho_csv)
-      total_registros += qtd
-      if len(preview_items) < preview_limit:
-        faltam = preview_limit - len(preview_items)
-        preview_items.extend(registros[:faltam])
-    except Exception:
+      filename = url.split("/")[-1]
+      year_str = filename.replace(".csv", "").replace(".parquet", "").split("_")[-1]
+      if not year_str.isdigit():
+        continue
+      year_str = (
+        year_str
+        if len(year_str) == 4
+        else year_str[:4] + year_str[4:6] + year_str[6:8]
+      )
+      resource_year = int(year_str)
+      if resource_year in requested_years:
+        if resource_year not in best_resources_by_year or format_type == "PARQUET":
+          res['year'] = resource_year
+          best_resources_by_year[resource_year] = res
+    except (ValueError, IndexError):
       continue
+  final_list = list(best_resources_by_year.values())
+  print(f"DEBUG: Found {len(final_list)} optimal resources to process.")
+  return final_list
 
-  if not caminhos_csv:
-    raise ValueError("Nenhum dado disponível no intervalo após o processamento.")
 
-  return {
-    "arquivos_csv": [os.path.basename(p) for p in caminhos_csv],
-    "total_registros": int(total_registros),
-    "items": preview_items
-  }
+def _fetch_and_process_resource(resource: Dict[str, Any]) -> List[Dict[str, Any]]:
+  """
+  Processes data, uploads it as Parquet to GCS, and returns data as a list of dicts.
+  """
+  download_url = ONS_DOWNLOAD_RESOURCE_URL + resource.get("id") + "/download"
+  print(download_url)
+  print(
+    f"  -> Fetching {resource.get('name')} ({resource.get('format')})..."
+  )
+  if not download_url:
+    return []
+
+  try:
+    print(f"  -> Processing {download_url}...")
+    file_format = resource.get("format", "").upper()
+
+    if file_format == "CSV":
+      df = pd.read_csv(download_url, sep=';', header=1, encoding='latin-1')
+    elif file_format == "PARQUET":
+      df = pd.read_parquet(download_url)
+    else:
+      return []
+
+    if GCS_BUCKET_NAME:
+      try:
+        ingestion_date_str = date.today().strftime('%Y-%m-%d')
+        original_filename = download_url.split("/")[-1]
+        base_name = os.path.splitext(original_filename)[0]
+        gcs_path = f"gs://{GCS_BUCKET_NAME}/dt={ingestion_date_str}/{base_name}.parquet"
+
+        print("  -> Converting dataframe to string types for Parquet file...")
+        df_for_parquet = df.astype(str)
+
+        print(f"  -> Uploading to {gcs_path}...")
+        df_for_parquet.to_parquet(gcs_path, index=False)
+        print(f"  SUCCESS! Uploaded string-typed parquet to GCS.")
+
+      except Exception as e:
+        print(f"  [!!!] GCS UPLOAD FAILED: {e}")
+    else:
+      print("  -> WARNING: GCS_BUCKET_NAME not set. Skipping upload.")
+
+    df = df.where(pd.notna(df), None)
+    print(f"  SUCCESS! Processed {len(df)} records from {download_url}")
+    return df.to_dict(orient='records')
+
+  except Exception as e:
+    print(f"  [!!!] CRITICAL ERROR during processing: {e}")
+    import traceback
+    traceback.print_exc()
+    return []
+
+
+async def process_resource(resource: Dict[str, Any]) -> List[Dict[str, Any]]:
+  """Async wrapper for the data processing function."""
+  return await asyncio.to_thread(_fetch_and_process_resource, resource)

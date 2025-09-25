@@ -1,16 +1,15 @@
+from pydantic import BaseModel
 from datetime import date
 from typing import List, Dict, Any
 
-from pydantic import BaseModel
+class DateRangeRequest(BaseModel):
+    start_date: date
+    end_date: date
 
-
-class IntervaloDeDatas(BaseModel):
-  firstDate: date
-  lastDate: date
-
-
-class RespostaPaginada(BaseModel):
-  total_items: int
-  total_paginas: int
-  pagina_atual: int
-  items: List[Dict[str, Any]]
+class ProcessResponse(BaseModel):
+    message: str
+    total_records: int
+    total_pages: int
+    current_page: int
+    page_size: int
+    data: List[Dict[str, Any]]

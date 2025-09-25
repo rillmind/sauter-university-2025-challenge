@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from api.tests import app
+from main import app
 
 
 class TestMain(unittest.TestCase):

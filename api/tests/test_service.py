@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 from freezegun import freeze_time
 
-from api.tests import (
+from service import (
   filtrar_urls_por_ano,
   extrair_ano,
   nome_csv,
